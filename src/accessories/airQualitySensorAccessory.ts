@@ -1,6 +1,6 @@
 import { CharacteristicValue, type Logging, PlatformAccessory, Service } from 'homebridge';
 
-import type { PhilipsAirHomebridgePlatform } from '../platform.js';
+import type { PhilipsAirPurifierHomebridgePlatform } from '../platform.js';
 import PhilipsAPI from '../philips/api.js';
 import { State } from '../philips/apiTypes.js';
 
@@ -9,7 +9,7 @@ export class AirQualitySensorAccessory {
   private currentState: State | undefined;
 
   public constructor(
-        private readonly platform: PhilipsAirHomebridgePlatform,
+        private readonly platform: PhilipsAirPurifierHomebridgePlatform,
         private readonly accessory: PlatformAccessory,
         private readonly logger: Logging,
         private readonly ip: string,

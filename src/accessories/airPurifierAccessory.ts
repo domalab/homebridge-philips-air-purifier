@@ -1,7 +1,7 @@
 import { CharacteristicValue, type Logging, PlatformAccessory, Service } from 'homebridge';
 import PhilipsAPI from '../philips/api.js';
 import { CommandResult, Mode, State, Status } from '../philips/apiTypes.js';
-import type { PhilipsAirHomebridgePlatform } from '../platform.js';
+import type { PhilipsAirPurifierHomebridgePlatform } from '../platform.js';
 
 export class AirPurifierAccessory {
   private service: Service;
@@ -13,7 +13,7 @@ export class AirPurifierAccessory {
   private savedRotationSpeed: number|null = null;
 
   constructor(
-        private readonly platform: PhilipsAirHomebridgePlatform,
+        private readonly platform: PhilipsAirPurifierHomebridgePlatform,
         private readonly accessory: PlatformAccessory,
         private readonly logger: Logging,
         private readonly ip: string,
