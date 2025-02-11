@@ -1,0 +1,46 @@
+{
+  "pluginAlias": "PhilipsAirPurifier",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Platform Name",
+        "type": "string",
+        "required": false,
+        "default": "Philips Air Purfier"
+      },
+      "devices": {
+        "type": "array",
+        "title": "Devices",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Device Name",
+              "description": "Name of the device in HomeKit",
+              "required": true,
+              "default": "Philips Air Purifier"
+            },
+            "ip": {
+              "type": "string",
+              "title": "IP Address",
+              "description": "IP address of your Philips Air Purifier",
+              "required": true,
+              "placeholder": "192.168.1.100"
+            },
+            "port": {
+              "type": "integer",
+              "title": "Port",
+              "description": "Port number (usually 5683)",
+              "required": true,
+              "default": 5683
+            }
+          }
+        }
+      }
+    }
+  }
+}
