@@ -62,7 +62,7 @@ export default class PhilipsAPI {
           }
 
           this.eventEmitter.emit('source:state', {
-            pm2_5: parsed['D03-33'],
+            pm2_5: parsed['D03224'],
             mode,
             status,
           });
