@@ -1,7 +1,10 @@
 export enum Mode {
-    GENERAL_AUTO,
-    SLEEP,
-    TURBO
+    AUTO = 'AUTO',                // Standard Auto Mode
+    AUTO_PLUS = 'AUTO_PLUS',      // Auto+ (AI Mode) 
+    SLEEP = 'SLEEP',              // Sleep Mode
+    MEDIUM = 'MEDIUM',            // Medium Mode
+    TURBO = 'TURBO',              // Turbo Mode
+    MANUAL = 'MANUAL'             // Manual Speed
 }
 
 export enum Status {
@@ -12,7 +15,8 @@ export enum Status {
 export interface State {
     pm2_5: number,
     mode: Mode,
-    status: Status
+    status: Status,
+    speed?: number    // For manual mode speed level
 }
 
 export interface Info {
