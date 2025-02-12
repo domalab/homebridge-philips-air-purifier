@@ -9,7 +9,7 @@
         "title": "Platform Name",
         "type": "string",
         "required": false,
-        "default": "Philips Air Purfier"
+        "default": "Philips Air Purifier"
       },
       "devices": {
         "type": "array",
