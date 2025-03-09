@@ -5,6 +5,7 @@ All notable changes to the Homebridge Philips Air Purifier plugin will be docume
 ## [1.0.1] - 2024-10-26
 
 ### Added
+
 - Enhanced connection recovery with exponential backoff retry mechanism
 - Improved model detection for unknown device types
 - Added configurable connection timeout (global and per-device)
@@ -12,6 +13,7 @@ All notable changes to the Homebridge Philips Air Purifier plugin will be docume
 - Better error reporting and comprehensive debug logging
 
 ### Fixed
+
 - More robust error handling for network failures
 - Improved handling of device state updates
 - Better timeout handling for COAP requests
