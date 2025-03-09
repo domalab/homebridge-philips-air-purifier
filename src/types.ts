@@ -40,6 +40,9 @@ export interface DeviceStatus {
   DeviceId?: string;  // Device ID for serial number
   D01S0D?: string;    // Alternative Device ID for serial number
   D01S12?: string;    // Firmware version
+  ProductId?: string; // Product ID, sometimes used for model identification
+  name?: string;      // Device name, may include model information
+  type?: string;      // Device type
 }
 
 export const MODEL_CONFIGS: Record<FanModel, ModelConfig> = {
@@ -178,7 +181,9 @@ export const MODEL_CONFIGS: Record<FanModel, ModelConfig> = {
   [FanModel.UNKNOWN]: {
     modes: ['auto'],
     speeds: [1],
-    supports: {},
+    supports: {
+      debugLogging: true, // Enable debug for unknown models to help with diagnosis
+    },
     pm25Divisor: 100,
     airQualityThresholds: {
       good: 12,
@@ -188,34 +193,87 @@ export const MODEL_CONFIGS: Record<FanModel, ModelConfig> = {
   },
 };
 
-export function detectModel(status: DeviceStatus): FanModel {
-  const modelId = status.D01S05 || status.modelid || '';
-  const wifiVersion = status.WifiVersion || '';
+/**
+ * Pattern map to help identify models from various identifiers
+ */
+const MODEL_PATTERNS: Record<string, FanModel> = {
+  'AC0850/11': FanModel.AC0850_11,
+  'AC0850/10': FanModel.AC0850_11, // Similar enough to AC0850/11
+  'AC0850/20': FanModel.AC0850_20,
+  'AC1214': FanModel.AC1214,
+  'AC1715': FanModel.AC1715,
+  'AC2729': FanModel.AC2729,
+  'AC2889': FanModel.AC2889,
+  'AC3033': FanModel.AC3033,
+  'AC3059': FanModel.AC3059,
+  'AC3829': FanModel.AC3829,
+  'AC4220': FanModel.AC4220,
+};
 
-  if (modelId.includes('AC4220/12')) {
-    return FanModel.AC4220;
-  } else if (modelId.includes('AC0850') && wifiVersion.includes('AWS_Philips_AIR')) {
-    return FanModel.AC0850_11;
-  } else if (modelId.includes('AC1214')) {
-    return FanModel.AC1214;
-  } else if (modelId.includes('AC1715')) {
-    return FanModel.AC1715;
-  } else if (modelId.includes('AC2729')) {
-    return FanModel.AC2729;
-  } else if (modelId.includes('AC2889')) {
-    return FanModel.AC2889;
-  } else if (modelId.includes('AC3033')) {
-    return FanModel.AC3033;
-  } else if (modelId.includes('AC3059')) {
-    return FanModel.AC3059;
-  } else if (modelId.includes('AC3829')) {
-    return FanModel.AC3829;
+/**
+ * Attempt to detect the model of the Philips Air Purifier from its status information
+ * 
+ * @param status The device status object containing model information
+ * @returns The detected FanModel
+ */
+export function detectModel(status: DeviceStatus): FanModel {
+  if (!status) {
+    console.warn('No device status provided for model detection');
+    return FanModel.UNKNOWN;
+  }
+
+  // Collect all potential model identifiers
+  const potentialIds = [
+    status.D01S05,
+    status.modelid,
+    status.ProductId,
+    status.name,
+    status.type,
+  ].filter(Boolean).map(id => id?.toString() || '');
+
+  // Join all the identifiers for logging
+  const allIdentifiers = potentialIds.join(', ');
+  const wifiVersion = status.WifiVersion || 'unknown';
+
+  console.debug(`Detecting model from identifiers: [${allIdentifiers}], WifiVersion: ${wifiVersion}`);
+
+  // First, try exact matches
+  for (const id of potentialIds) {
+    for (const [pattern, model] of Object.entries(MODEL_PATTERNS)) {
+      if (id.includes(pattern)) {
+        console.info(`Detected model ${model} from pattern match: ${pattern} in ${id}`);
+        return model;
+      }
+    }
+  }
+
+  // Handle specific model detection for more complex cases
+  if (wifiVersion && wifiVersion.includes('AWS_Philips_AIR')) {
+    for (const id of potentialIds) {
+      if (id.includes('AC0850')) {
+        return FanModel.AC0850_11;
+      }
+    }
+  }
+
+  // If we get here, try to extract model number from any identifiers
+  for (const id of potentialIds) {
+    // Try to extract AC#### pattern
+    const modelMatch = id.match(/AC[0-9]{4}/i);
+    if (modelMatch) {
+      const extractedModel = modelMatch[0];
+      console.info(`Extracted model pattern ${extractedModel} from ${id}`);
+      
+      // Look for closest match in our enum
+      for (const model of Object.values(FanModel)) {
+        if (model.includes(extractedModel)) {
+          console.info(`Using closest model match: ${model}`);
+          return model;
+        }
+      }
+    }
   }
   
-  // If no match found but we have a model ID, log it
-  if (modelId) {
-    console.warn(`Unknown model ID: ${modelId}, WifiVersion: ${wifiVersion}`);
-  }
-  
+  console.warn(`Unable to detect model from identifiers: [${allIdentifiers}], WifiVersion: ${wifiVersion}`);
   return FanModel.UNKNOWN;
 }

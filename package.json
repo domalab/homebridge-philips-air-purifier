@@ -2,7 +2,7 @@
   "name": "homebridge-philips-air-purifier",
   "displayName": "Homebridge Philips Air Purifier",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A Homebridge plugin for Philips Air Purifier",
   "author": "domalab",
   "license": "Apache-2.0",

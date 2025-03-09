@@ -11,6 +11,13 @@
         "required": false,
         "default": "Philips Air Purifier"
       },
+      "connectionTimeout": {
+        "title": "Connection Timeout",
+        "type": "integer",
+        "description": "Connection timeout in milliseconds (default: 10000)",
+        "placeholder": 10000,
+        "required": false
+      },
       "devices": {
         "type": "array",
         "title": "Devices",
@@ -37,6 +44,13 @@
               "description": "Port number (usually 5683)",
               "required": true,
               "default": 5683
+            },
+            "connectionTimeout": {
+              "type": "integer",
+              "title": "Connection Timeout",
+              "description": "Device-specific connection timeout in milliseconds (overrides global setting)",
+              "required": false,
+              "placeholder": 10000
             }
           }
         }

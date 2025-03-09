@@ -24,6 +24,8 @@ A Homebridge plugin that allows you to control your Philips Air Purifier through
 - Fan speed control
 - Auto mode support
 - Filter status monitoring (on supported models)
+- Robust connection handling with automatic recovery
+- Configurable connection timeouts
 
 ## Prerequisites
 
@@ -60,11 +62,13 @@ Add this to your Homebridge `config.json`:
         {
             "platform": "PhilipsAirPurifier",
             "name": "Philips Air Purifier",
+            "connectionTimeout": 10000,
             "devices": [
                 {
                     "name": "Living Room Air Purifier",
                     "ip": "192.168.1.100",
-                    "port": 5683
+                    "port": 5683,
+                    "connectionTimeout": 15000
                 }
             ]
         }
@@ -78,10 +82,12 @@ Add this to your Homebridge `config.json`:
 |-----------|------|---------|-------------|
 | `platform` | string | Required | Must be "PhilipsAirPurifier" |
 | `name` | string | "Philips Air Purifier" | Name of the platform |
+| `connectionTimeout` | number | 10000 | Global connection timeout in milliseconds |
 | `devices` | array | Required | Array of device configurations |
 | `devices[].name` | string | Required | Name of the device in HomeKit |
 | `devices[].ip` | string | Required | IP address of the device |
 | `devices[].port` | number | 5683 | Port number (usually 5683) |
+| `devices[].connectionTimeout` | number | *inherited from global* | Device-specific timeout (overrides global) |
 
 ## Features Details
 
@@ -104,12 +110,20 @@ Add this to your Homebridge `config.json`:
 - Fan speed control (percentage-based)
 - Manual and automatic operation modes
 
+### Connection Reliability
+
+- Automatic connection recovery with exponential backoff
+- Configurable timeouts for network operations
+- Enhanced error reporting and handling
+- Improved device detection for various models
+
 ## Troubleshooting
 
 1. **Device Not Responding**
    - Verify the IP address is correct
    - Ensure the device is on the same network
    - Check if port 5683 is accessible
+   - Try increasing the `connectionTimeout` value
 
 2. **Incorrect Readings**
    - Restart the air purifier
@@ -120,6 +134,11 @@ Add this to your Homebridge `config.json`:
    - Ensure your device has a stable network connection
    - Consider setting up a static IP for your device
    - Check your network firewall settings
+   - Look for connection logs in Homebridge
+
+4. **Unknown Model**
+   - If your device is reported as "Unknown", please submit an issue with the logs
+   - The plugin will still attempt to work with basic functionality
 
 ## Development
 

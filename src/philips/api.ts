@@ -29,31 +29,52 @@ export default class PhilipsAPI {
   private initialStatus: DeviceStatus | null = null;
   private lastCommandTime: number = 0;
   private readonly commandDelay: number = 1000; // 1 second delay between commands
+  private connectionAttempts: number = 0;
+  private readonly maxConnectionAttempts: number = 5;
+  private connectionTimeout: number = 10000; // Default 10s timeout
+  private isConnected: boolean = false;
+  private reconnectTimer: NodeJS.Timeout | null = null;
 
   public constructor(
     private readonly logger: Logging,
     private readonly host: string,
     private readonly port: number,
+    timeout?: number,
   ) {
     this.logger.debug('An API client for the device has been created');
+    
+    // Set custom timeout if provided
+    if (timeout && typeof timeout === 'number' && timeout > 0) {
+      this.connectionTimeout = timeout;
+    }
+    
+    // Set connection timeout for COAP requests
+    coap.updateTiming({
+      ackTimeout: Math.min(this.connectionTimeout / 2, 5000),
+      ackRandomFactor: 1.5,
+      maxRetransmit: 4,
+    });
   }
 
   public getInitialStatus(): DeviceStatus | null {
     return this.initialStatus;
   }
 
+  public isDeviceConnected(): boolean {
+    return this.isConnected;
+  }
+
   public changeStatus(status: Status): Promise<CommandResult> {
     const params = {
       'D03-02': status === Status.ON ? 'ON' : 'OFF',
     };
-
     return this.sendCommand(params);
   }
 
   public changeMode(mode: Mode, speed?: number): Promise<CommandResult> {
     let modeString: string;
     const params: Record<string, string | number> = {};
-
+    
     switch (mode) {
     case Mode.AUTO_PLUS:
       modeString = 'Auto+';
@@ -78,67 +99,119 @@ export default class PhilipsAPI {
       modeString = 'Auto General';
       break;
     }
-
+    
     params['D03-12'] = modeString;
     return this.sendCommand(params);
   }
 
   public observeState(): void {
-    this.logger.debug('Attempt to make a request to get the device status');
+    this.logger.debug('Attempt to connect to the device and observe status');
+    this.connectionAttempts = 0;
+    this.attemptConnection();
+  }
 
-    const setupObservation = (): void => {
-      const request: OutgoingMessage = coap.request({
-        host: this.host,
-        port: this.port,
-        method: 'GET',
-        pathname: '/sys/dev/status',
-        observe: true,
-      });
-
-      request.on('response', (response: IncomingMessage): void => {
-        response.on('data', this.handleStateUpdate.bind(this));
-      });
-
-      request.on('error', (err) => {
-        this.logger.error('Error while request on state', err);
-        // Retry connection after 5 seconds
-        setTimeout(() => this.observeState(), 5000);
-      });
-
-      request.end();
-    };
+  private attemptConnection(): void {
+    this.connectionAttempts++;
+    this.logger.debug(`Connection attempt ${this.connectionAttempts} to ${this.host}:${this.port}`);
 
     const triggerParams: object = {
       'D03-03': true,
     };
 
     this.sendCommand(triggerParams)
-      .then(setupObservation)
+      .then(() => {
+        this.isConnected = true;
+        this.connectionAttempts = 0;
+        this.logger.info(`Successfully connected to Philips Air Purifier at ${this.host}:${this.port}`);
+        this.setupObservation();
+      })
       .catch((err?: Error|null): void => {
-        this.logger.error(
-          'An error occurred on the first request for the ' +
-          'status retrieval trigger. Please try restarting ' +
-          'the device.',
-          err,
+        this.isConnected = false;
+        const retryDelay = Math.min(this.connectionAttempts * 5000, 30000); // Exponential backoff up to 30s
+        
+        this.logger.warn(
+          `Failed to connect to Philips Air Purifier at ${this.host}:${this.port}. ` +
+          `Attempt ${this.connectionAttempts}/${this.maxConnectionAttempts}. ` +
+          `Will retry in ${retryDelay/1000}s. Error: ${err?.message || 'Unknown error'}`,
         );
-        // Retry after 5 seconds
-        setTimeout(() => this.observeState(), 5000);
+        
+        // Clear any existing timers
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+        }
+        
+        // Retry with exponential backoff if under max attempts
+        if (this.connectionAttempts < this.maxConnectionAttempts) {
+          this.reconnectTimer = setTimeout(() => this.attemptConnection(), retryDelay);
+        } else {
+          this.logger.error(
+            `Failed to connect to Philips Air Purifier after ${this.maxConnectionAttempts} attempts. ` +
+            'Please check your network connection and device.',
+          );
+          
+          // Reset attempts and try again after a longer delay
+          this.connectionAttempts = 0;
+          this.reconnectTimer = setTimeout(() => this.attemptConnection(), 60000); // 1 minute
+        }
       });
+  }
+
+  private setupObservation(): void {
+    this.logger.debug('Setting up observation for device status updates');
+    
+    const request: OutgoingMessage = coap.request({
+      host: this.host,
+      port: this.port,
+      method: 'GET',
+      pathname: '/sys/dev/status',
+      observe: true,
+    });
+    
+    request.on('response', (response: IncomingMessage): void => {
+      this.logger.debug('Received observational response from device');
+      response.on('data', this.handleStateUpdate.bind(this));
+      
+      response.on('end', () => {
+        this.logger.debug('Observation response ended unexpectedly');
+        this.isConnected = false;
+        // Try to re-establish the connection
+        setTimeout(() => this.attemptConnection(), 5000);
+      });
+    });
+    
+    request.on('error', (err) => {
+      this.isConnected = false;
+      this.logger.error(`Error while observing device state: ${err.message}`);
+      // Retry connection after delay
+      setTimeout(() => this.attemptConnection(), 5000);
+    });
+    
+    request.on('timeout', () => {
+      this.isConnected = false;
+      this.logger.error('Connection to device timed out while observing');
+      // Retry connection after delay
+      setTimeout(() => this.attemptConnection(), 5000);
+    });
+    
+    request.end();
   }
 
   private handleStateUpdate(data: Buffer): void {
     try {
       const parsedData = decrypt(data.toString());
       const parsed = parsedData.state.reported;
-
+      
+      // Confirm we're connected since we received data
+      this.isConnected = true;
+      
       // Store initial status if not already set
       if (!this.initialStatus) {
         this.initialStatus = parsed;
         this.logger.debug('Initial device status stored', this.initialStatus);
       }
-
+      
       this.logger.debug('Status received from the device', parsed);
-
+      
       let mode: Mode = Mode.AUTO;
       switch (parsed.D0310C) {
       case 'P':
@@ -172,7 +245,7 @@ export default class PhilipsAPI {
         mode = Mode.MANUAL;
         break;
       }
-
+      
       let status: Status = Status.OFF;
       switch (parsed.D03102) {
       case 1:
@@ -186,7 +259,7 @@ export default class PhilipsAPI {
         status = Status.OFF;
         break;
       }
-
+      
       this.eventEmitter.emit('source:state', {
         pm2_5: parsed.D03224,
         mode,
@@ -200,21 +273,21 @@ export default class PhilipsAPI {
 
   private async sendCommand(params: object): Promise<CommandResult> {
     this.logger.debug('Attempt to execute a command on the device');
-
+    
     // Ensure minimum delay between commands
     const now = Date.now();
     const timeSinceLastCommand = now - this.lastCommandTime;
     if (timeSinceLastCommand < this.commandDelay) {
       await new Promise(resolve => setTimeout(resolve, this.commandDelay - timeSinceLastCommand));
     }
-
+    
     return new Promise((resolve, reject): void => {
       const fn = async (done: AsyncLockDoneCallback<CommandResult>): Promise<void> => {
         try {
           const buffer = await this.getSync();
           const originalCounter = buffer.toString();
           this.logger.debug('The counter has been received from the device', originalCounter);
-
+          
           const clientKey: string = nextClientKey(originalCounter);
           const state = {
             state: {
@@ -226,7 +299,7 @@ export default class PhilipsAPI {
               },
             },
           };
-
+          
           const payload = encrypt(clientKey, JSON.stringify(state));
           const request = coap.request({
             host: this.host,
@@ -235,34 +308,61 @@ export default class PhilipsAPI {
             pathname: '/sys/dev/control',
             retrySend: 3,
           });
-
+          
+          let responseReceived = false;
+          
+          // Set timeout for command
+          const requestTimeout = setTimeout(() => {
+            if (!responseReceived) {
+              request.destroy();
+              done(new Error(`Command timed out after ${this.connectionTimeout}ms`));
+            }
+          }, this.connectionTimeout);
+          
           request.write(payload);
-
+          
           request.on('response', (response: IncomingMessage): void => {
+            responseReceived = true;
+            clearTimeout(requestTimeout);
+            
             response.pipe(BufferListStream((err: Error, buffer: Buffer): void => {
               if (err) {
                 this.logger.error('Buffer error', err);
                 done(err);
                 return;
               }
-
+              
               if (buffer) {
-                this.lastCommandTime = Date.now();
-                done(null, JSON.parse(buffer.toString()));
+                try {
+                  this.lastCommandTime = Date.now();
+                  this.isConnected = true; // Successfully received response
+                  const result = JSON.parse(buffer.toString());
+                  done(null, result);
+                } catch (parseError: unknown) {
+                  const errorMessage = parseError instanceof Error 
+                    ? parseError.message 
+                    : 'Unknown parse error';
+                  done(new Error(`Failed to parse command response: ${errorMessage}`));
+                }
+              } else {
+                done(new Error('Empty response received'));
               }
             }));
           });
-
+          
           request.on('error', (err) => {
+            responseReceived = true;
+            clearTimeout(requestTimeout);
+            this.isConnected = false;
             done(err);
           });
-
+          
           request.end();
         } catch (error) {
           done(error as Error);
         }
       };
-
+      
       lock.acquire<CommandResult>('api:send_command', fn)
         .then(resolve)
         .catch(reject);
@@ -275,35 +375,53 @@ export default class PhilipsAPI {
         const payload = crypto.randomBytes(4)
           .toString('hex')
           .toUpperCase();
-
+        
         const request: OutgoingMessage = coap.request({
           host: this.host,
           port: this.port,
           method: 'POST',
           pathname: '/sys/dev/sync',
         });
-
+        
+        let responseReceived = false;
+        
+        // Set timeout for sync request
+        const requestTimeout = setTimeout(() => {
+          if (!responseReceived) {
+            request.destroy();
+            done(new Error(`Sync request timed out after ${this.connectionTimeout}ms`));
+          }
+        }, this.connectionTimeout);
+        
         request.write(Buffer.from(payload));
-
+        
         request.on('response', (response: IncomingMessage): void => {
+          responseReceived = true;
+          clearTimeout(requestTimeout);
+          
           response.pipe(BufferListStream((err: Error, buffer: Buffer): void => {
             if (err) {
               done(err);
               return;
             }
+            
             if (buffer) {
               done(null, buffer);
+            } else {
+              done(new Error('Empty sync response'));
             }
           }));
         });
-
+        
         request.on('error', (err): void => {
+          responseReceived = true;
+          clearTimeout(requestTimeout);
           done(err);
         });
-
+        
         request.end();
       };
-
+      
       lock.acquire<Buffer>('api:get_sync', fn)
         .then(resolve)
         .catch(reject);

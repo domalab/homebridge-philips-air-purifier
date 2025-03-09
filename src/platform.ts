@@ -17,6 +17,7 @@ interface DeviceConfig {
   name: string;
   ip: string;
   port: number;
+  connectionTimeout?: number;
 }
 
 export class PhilipsAirPurifierHomebridgePlatform implements DynamicPlatformPlugin {
@@ -35,13 +36,17 @@ export class PhilipsAirPurifierHomebridgePlatform implements DynamicPlatformPlug
 
     // Check if configuration contains devices array
     if (config.devices && Array.isArray(config.devices)) {
-      this.devices = config.devices;
+      this.devices = config.devices.map(device => ({
+        ...device,
+        connectionTimeout: device.connectionTimeout || config.connectionTimeout,
+      }));
     } else if (config.ip && config.port) {
       // Support legacy single device config
       this.devices = [{
         name: config.name || 'Philips Air Purifier',
         ip: config.ip,
         port: config.port,
+        connectionTimeout: config.connectionTimeout,
       }];
     } else {
       this.logger.warn('No devices specified in the configuration');
@@ -66,9 +71,15 @@ export class PhilipsAirPurifierHomebridgePlatform implements DynamicPlatformPlug
         this.logger,
         device.ip,
         device.port,
+        device.connectionTimeout,
       );
+      
+      this.logger.info(
+        `Initializing Philips Air Purifier at ${device.ip}:${device.port} ` +
+        `with timeout ${device.connectionTimeout || 'default'}ms`
+      );
+      
       api.observeState();
-
       this.registerSensor(api, device);
       this.registerPurifier(api, device);
     }
@@ -93,7 +104,8 @@ export class PhilipsAirPurifierHomebridgePlatform implements DynamicPlatformPlug
         device.port,
         api,
       );
-
+      
+      this.logger.info(`Registering new air quality sensor: ${device.name} Air Quality`);
       this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     } else {
       existingAccessory.context.device = device;
@@ -105,6 +117,8 @@ export class PhilipsAirPurifierHomebridgePlatform implements DynamicPlatformPlug
         device.port,
         api,
       );
+      
+      this.logger.info(`Restoring cached air quality sensor: ${existingAccessory.displayName}`);
     }
   }
 
@@ -127,7 +141,8 @@ export class PhilipsAirPurifierHomebridgePlatform implements DynamicPlatformPlug
         device.port,
         api,
       );
-
+      
+      this.logger.info(`Registering new air purifier: ${device.name}`);
       this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     } else {
       existingAccessory.context.device = device;
@@ -139,6 +154,8 @@ export class PhilipsAirPurifierHomebridgePlatform implements DynamicPlatformPlug
         device.port,
         api,
       );
+      
+      this.logger.info(`Restoring cached air purifier: ${existingAccessory.displayName}`);
     }
   }
 }
